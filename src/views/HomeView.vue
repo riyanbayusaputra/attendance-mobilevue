@@ -8,6 +8,7 @@ const auth = useAuthStore()
 const presence = usePresenceStore()
 const router = useRouter()
 const isRefreshing = ref(false)
+const isFirstLoad = ref(true) // ← tambah ini
 
 const today = new Date().toLocaleDateString('id-ID', {
   weekday: 'long',
@@ -48,6 +49,7 @@ async function loadData() {
     ])
   } finally {
     isRefreshing.value = false
+    isFirstLoad.value = false // ← selesai load pertama
   }
 }
 
@@ -63,14 +65,14 @@ onActivated(() => loadData())
 <template>
   <div class="min-h-screen bg-gray-50 pb-24">
 
-    <!-- Loading overlay saat refresh -->
-    <div v-if="isRefreshing && !auth.user"
+    <!-- Loading HANYA saat first load & belum ada user sama sekali -->
+    <div v-if="isFirstLoad && isRefreshing && !auth.user"
       class="min-h-screen flex flex-col items-center justify-center gap-3">
       <div class="w-10 h-10 border-2 border-violet-600 border-t-transparent rounded-full animate-spin"></div>
       <p class="text-gray-400 text-sm">Memuat data...</p>
     </div>
 
-    <!-- Konten utama -->
+    <!-- Konten SELALU tampil kalau sudah pernah load atau user sudah ada -->
     <template v-else>
 
       <!-- Header -->
@@ -134,7 +136,11 @@ onActivated(() => loadData())
               >
                 {{ statusConfig.label }}
               </span>
-              <span v-else class="text-xs text-gray-300">Belum presensi</span>
+              <span v-else class="text-xs text-gray-300">
+                <!-- Skeleton saat loading -->
+                <span v-if="isRefreshing" class="inline-block w-16 h-4 bg-gray-100 rounded animate-pulse"></span>
+                <span v-else>Belum presensi</span>
+              </span>
             </div>
           </div>
 
@@ -142,7 +148,12 @@ onActivated(() => loadData())
           <div class="grid grid-cols-2 divide-x divide-gray-100">
             <div class="p-5 text-center">
               <p class="text-xs text-gray-400 mb-1">Check In</p>
-              <p class="text-2xl font-semibold"
+              <!-- Skeleton saat loading -->
+              <div v-if="isRefreshing && !presence.todayPresence"
+                class="h-8 w-20 bg-gray-100 rounded animate-pulse mx-auto">
+              </div>
+              <p v-else
+                class="text-2xl font-semibold"
                 :class="hasCheckedIn ? 'text-green-600' : 'text-gray-200'">
                 {{ formatTime(presence.todayPresence?.check_in_at ?? null) }}
               </p>
@@ -162,7 +173,12 @@ onActivated(() => loadData())
 
             <div class="p-5 text-center">
               <p class="text-xs text-gray-400 mb-1">Check Out</p>
-              <p class="text-2xl font-semibold"
+              <!-- Skeleton saat loading -->
+              <div v-if="isRefreshing && !presence.todayPresence"
+                class="h-8 w-20 bg-gray-100 rounded animate-pulse mx-auto">
+              </div>
+              <p v-else
+                class="text-2xl font-semibold"
                 :class="hasCheckedOut ? 'text-blue-600' : 'text-gray-200'">
                 {{ formatTime(presence.todayPresence?.check_out_at ?? null) }}
               </p>
@@ -171,29 +187,36 @@ onActivated(() => loadData())
 
           <!-- Action Button -->
           <div class="px-5 pb-5 pt-2">
-            <button
-              v-if="!hasCheckedIn"
-              @click="router.push({ name: 'check-in', query: { type: 'in' } })"
-              class="w-full py-3.5 bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white font-medium rounded-xl transition text-sm"
-            >
-              Check In Sekarang
-            </button>
-
-            <button
-              v-else-if="!hasCheckedOut"
-              @click="router.push({ name: 'check-in', query: { type: 'out' } })"
-              class="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium rounded-xl transition text-sm"
-            >
-              Check Out Sekarang
-            </button>
-
-            <div v-else
-              class="w-full py-3.5 bg-green-50 border border-green-100 text-green-600 rounded-xl text-sm text-center flex items-center justify-center gap-2 font-medium">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
-              </svg>
-              Presensi Selesai
+            <!-- Skeleton button saat loading pertama -->
+            <div v-if="isRefreshing && !presence.todayPresence"
+              class="w-full h-12 bg-gray-100 rounded-xl animate-pulse">
             </div>
+
+            <template v-else>
+              <button
+                v-if="!hasCheckedIn"
+                @click="router.push({ name: 'check-in', query: { type: 'in' } })"
+                class="w-full py-3.5 bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white font-medium rounded-xl transition text-sm"
+              >
+                Check In Sekarang
+              </button>
+
+              <button
+                v-else-if="!hasCheckedOut"
+                @click="router.push({ name: 'check-in', query: { type: 'out' } })"
+                class="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium rounded-xl transition text-sm"
+              >
+                Check Out Sekarang
+              </button>
+
+              <div v-else
+                class="w-full py-3.5 bg-green-50 border border-green-100 text-green-600 rounded-xl text-sm text-center flex items-center justify-center gap-2 font-medium">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+                </svg>
+                Presensi Selesai
+              </div>
+            </template>
           </div>
         </div>
 
