@@ -10,27 +10,49 @@ export interface CompareResult {
 export function useImageCompare() {
   const isComparing = ref(false)
   const lastDistance = ref<number | null>(null)
-  const THRESHOLD = 0.5
+  const THRESHOLD = 0.45 // ← ketat
 
   async function getDescriptorFromUrl(
     imageUrl: string
   ): Promise<Float32Array | null> {
     return new Promise((resolve) => {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = async () => {
-        try {
-          const detection = await faceapi
-            .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
-            .withFaceLandmarks()
-            .withFaceDescriptor()
-          resolve(detection?.descriptor ?? null)
-        } catch {
+      // Fetch dengan header ngrok
+      fetch(imageUrl, {
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+        },
+      })
+        .then((res) => res.blob())
+        .then((blob) => {
+          const blobUrl = URL.createObjectURL(blob)
+          const img = new Image()
+          img.crossOrigin = 'anonymous'
+          img.onload = async () => {
+            try {
+              const detection = await faceapi
+                .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+                .withFaceLandmarks()
+                .withFaceDescriptor()
+              console.log('Profile face detected:', detection ? '✓' : '✗ tidak ada wajah')
+              URL.revokeObjectURL(blobUrl)
+              resolve(detection?.descriptor ?? null)
+            } catch (err) {
+              console.error('Detect error:', err)
+              URL.revokeObjectURL(blobUrl)
+              resolve(null)
+            }
+          }
+          img.onerror = () => {
+            console.error('Image load error')
+            URL.revokeObjectURL(blobUrl)
+            resolve(null)
+          }
+          img.src = blobUrl
+        })
+        .catch((err) => {
+          console.error('Fetch error:', err)
           resolve(null)
-        }
-      }
-      img.onerror = () => resolve(null)
-      img.src = imageUrl
+        })
     })
   }
 
@@ -42,8 +64,10 @@ export function useImageCompare() {
         .detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions())
         .withFaceLandmarks()
         .withFaceDescriptor()
+      console.log('Live face detected:', detection ? '✓' : '✗ tidak ada wajah di kamera')
       return detection?.descriptor ?? null
-    } catch {
+    } catch (err) {
+      console.error('Live detect error:', err)
       return null
     }
   }
@@ -55,41 +79,56 @@ export function useImageCompare() {
     isComparing.value = true
     lastDistance.value = null
 
+    console.log('=== IMAGE COMPARE ===')
+    console.log('URL:', profileImageUrl)
+
     try {
       const [liveDescriptor, profileDescriptor] = await Promise.all([
         getDescriptorFromVideo(videoEl),
         getDescriptorFromUrl(profileImageUrl),
       ])
 
+      console.log('Live descriptor:', liveDescriptor ? '✓' : '✗ NULL')
+      console.log('Profile descriptor:', profileDescriptor ? '✓' : '✗ NULL')
+
       // Wajah tidak terdeteksi di kamera
       if (!liveDescriptor) {
         return {
           match: false,
           distance: 1,
-          message: 'Wajah tidak terdeteksi di kamera. Pastikan wajah terlihat jelas.',
+          message: 'Wajah tidak terdeteksi di kamera. Posisikan wajah dengan benar.',
         }
       }
 
-      // Foto profil tidak ada wajah — skip validasi
+      // Foto profil gagal diproses → TOLAK, jangan skip
       if (!profileDescriptor) {
         return {
-          match: true,
-          distance: 0,
-          message: 'Foto profil belum tersedia, validasi dilewati.',
+          match: false, // ← TOLAK bukan skip
+          distance: 1,
+          message: 'Gagal memproses foto profil. Hubungi administrator.',
         }
       }
 
-      const distance = faceapi.euclideanDistance(liveDescriptor, profileDescriptor)
+      const distance = faceapi.euclideanDistance(
+        Array.from(liveDescriptor),
+        Array.from(profileDescriptor)
+      )
+
       lastDistance.value = distance
       const match = distance <= THRESHOLD
-      const pct = ((1 - distance) * 100).toFixed(0)
+      const pct = ((1 - distance) * 100).toFixed(1)
+
+      console.log('Distance:', distance.toFixed(4))
+      console.log('Threshold:', THRESHOLD)
+      console.log('Match:', match)
+      console.log('===================')
 
       return {
         match,
         distance,
         message: match
-          ? `Wajah cocok (${pct}% kemiripan)`
-          : `Wajah tidak cocok. Pastikan Anda karyawan yang terdaftar.`,
+          ? `Verifikasi berhasil (${pct}% kemiripan)`
+          : `Wajah tidak cocok (${pct}% kemiripan). Absen ditolak.`,
       }
     } finally {
       isComparing.value = false

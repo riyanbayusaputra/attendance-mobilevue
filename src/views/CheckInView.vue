@@ -27,11 +27,11 @@ type Step =
   | 'success'
   | 'error'
 
-const step        = ref<Step>('loading-model')
-const errorMsg    = ref<string | null>(null)
-const statusText  = ref('Memuat model AI...')
+const step          = ref<Step>('loading-model')
+const errorMsg      = ref<string | null>(null)
+const statusText    = ref('Memuat model AI...')
 const capturedPhoto = ref<string | null>(null)
-const videoRef    = ref<HTMLVideoElement | null>(null)
+const videoRef      = ref<HTMLVideoElement | null>(null)
 
 const faceApi      = useFaceApi()
 const liveness     = useLiveness()
@@ -79,7 +79,6 @@ async function runLiveness() {
     return
   }
 
-  // Liveness passed
   step.value = 'camera'
 }
 
@@ -90,18 +89,30 @@ async function capture() {
   statusText.value = 'Memverifikasi wajah...'
   errorMsg.value = null
 
-  // Image comparison — hanya kalau user punya foto profil
   const profilePhoto = auth.user?.photo
-  if (profilePhoto) {
-    const result = await imageCompare.compare(videoRef.value!, profilePhoto)
-    if (!result.match) {
-      errorMsg.value = result.message
-      step.value = 'error'
-      return
-    }
+  console.log('=== CAPTURE START ===')
+  console.log('Profile photo URL:', profilePhoto)
+
+  // Wajib ada foto profil
+  if (!profilePhoto) {
+    errorMsg.value = 'Foto profil belum diupload. Hubungi administrator.'
+    step.value = 'error'
+    return
   }
 
-  // Foto diambil setelah verifikasi passed
+  // Jalankan image comparison
+  const result = await imageCompare.compare(videoRef.value!, profilePhoto)
+  console.log('Compare result:', result)
+
+  // STOP kalau tidak cocok
+  if (!result.match) {
+    errorMsg.value = result.message
+    step.value = 'error'
+    return
+  }
+
+  // Lanjut hanya kalau cocok
+  console.log('✓ Wajah cocok, lanjut capture')
   capturedPhoto.value = camera.capturePhoto(videoRef.value!)
   step.value = 'preview'
 }
@@ -109,7 +120,6 @@ async function capture() {
 async function retake() {
   capturedPhoto.value = null
   errorMsg.value = null
-  // Ulangi dari liveness
   await runLiveness()
 }
 
@@ -121,15 +131,10 @@ async function submit() {
   errorMsg.value = null
 
   try {
-    // Ambil GPS
     const coords = await gps.getCurrentPosition()
-
     statusText.value = 'Mengirim data...'
-
-    // Deteksi fake GPS
     const isFake = fakeGPS.detect(coords)
 
-    // Submit ke API
     if (type.value === 'in') {
       await presence.doCheckIn({
         latitude:    coords.latitude,
@@ -146,6 +151,13 @@ async function submit() {
     }
 
     step.value = 'success'
+
+    // Refresh data home
+    await Promise.all([
+      presence.fetchToday(),
+      auth.fetchMe(),
+    ])
+
     setTimeout(() => router.push({ name: 'home' }), 2000)
 
   } catch (err: any) {
@@ -217,11 +229,9 @@ async function submit() {
 
         <!-- Liveness overlay -->
         <div v-if="step === 'liveness'" class="absolute inset-0">
-          <!-- Scan line -->
           <div class="absolute inset-0 overflow-hidden rounded-full pointer-events-none">
             <div class="w-full h-0.5 bg-yellow-400/50 animate-scan"></div>
           </div>
-          <!-- Blink counter -->
           <div class="absolute bottom-5 left-0 right-0 flex justify-center">
             <div class="bg-black/60 backdrop-blur-sm px-4 py-1.5 rounded-full flex items-center gap-2">
               <div class="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
@@ -239,8 +249,7 @@ async function submit() {
         >
           <div class="w-16 h-16 bg-red-500/20 border border-red-500/40 rounded-full flex items-center justify-center">
             <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M6 18L18 6M6 6l12 12"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
             </svg>
           </div>
         </div>
@@ -272,7 +281,7 @@ async function submit() {
         ></div>
       </div>
 
-      <!-- Status Text Area -->
+      <!-- Status Text -->
       <div class="w-full max-w-xs text-center min-h-[80px] flex flex-col items-center justify-center">
 
         <!-- Loading model -->
@@ -286,7 +295,6 @@ async function submit() {
           <p class="text-yellow-400 text-sm font-medium">Liveness Detection</p>
           <p class="text-gray-300 text-sm mt-1">Kedipkan mata Anda minimal 1x</p>
           <p class="text-gray-500 text-xs mt-1">dalam 6 detik</p>
-          <!-- Progress bar -->
           <div class="mt-3 w-48 bg-gray-700 rounded-full h-1 overflow-hidden">
             <div class="bg-yellow-400 h-1 rounded-full animate-progress"></div>
           </div>
@@ -347,7 +355,7 @@ async function submit() {
             :disabled="!camera.isReady.value || imageCompare.isComparing.value"
             class="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-xl active:scale-95 transition-transform disabled:opacity-40"
           >
-            <div class="w-14 h-14 bg-violet-600 rounded-full transition-transform"></div>
+            <div class="w-14 h-14 bg-violet-600 rounded-full"></div>
           </button>
         </div>
 
