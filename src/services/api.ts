@@ -2,7 +2,7 @@ import axios from 'axios'
 import router from '@/router'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? 'http://192.168.1.14:8000/api/v1',
+  baseURL: import.meta.env.VITE_API_URL ?? 'https://ccc3-103-3-222-51.ngrok-free.app/api/v1',
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
