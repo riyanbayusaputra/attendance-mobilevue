@@ -41,7 +41,6 @@ const gps          = useGPS()
 const fakeGPS      = useFakeGPSDetect()
 
 onMounted(async () => {
-  // Step 1 — load model AI
   step.value = 'loading-model'
   statusText.value = 'Memuat model AI...'
   await faceApi.loadModels()
@@ -52,7 +51,6 @@ onMounted(async () => {
     return
   }
 
-  // Step 2 — start kamera
   await camera.startCamera(videoRef.value!)
 
   if (camera.error.value) {
@@ -61,7 +59,6 @@ onMounted(async () => {
     return
   }
 
-  // Step 3 — liveness detection
   await runLiveness()
 })
 
@@ -69,9 +66,9 @@ onUnmounted(() => camera.stopCamera())
 
 async function runLiveness() {
   step.value = 'liveness'
-  statusText.value = 'Kedipkan mata Anda...'
+  statusText.value = 'Mendeteksi wajah...'
 
-  const result = await liveness.checkLiveness(videoRef.value!, 6000)
+  const result = await liveness.checkLiveness(videoRef.value!, 3000)
 
   if (!result.passed) {
     errorMsg.value = result.message
@@ -91,27 +88,23 @@ async function capture() {
 
   const profilePhoto = auth.user?.photo
   console.log('=== CAPTURE START ===')
-  console.log('Profile photo URL:', profilePhoto)
+  console.log('Profile photo:', profilePhoto ? 'ada' : 'null')
 
-  // Wajib ada foto profil
   if (!profilePhoto) {
     errorMsg.value = 'Foto profil belum diupload. Hubungi administrator.'
     step.value = 'error'
     return
   }
 
-  // Jalankan image comparison
   const result = await imageCompare.compare(videoRef.value!, profilePhoto)
   console.log('Compare result:', result)
 
-  // STOP kalau tidak cocok
   if (!result.match) {
     errorMsg.value = result.message
     step.value = 'error'
     return
   }
 
-  // Lanjut hanya kalau cocok
   console.log('✓ Wajah cocok, lanjut capture')
   capturedPhoto.value = camera.capturePhoto(videoRef.value!)
   step.value = 'preview'
@@ -152,7 +145,6 @@ async function submit() {
 
     step.value = 'success'
 
-    // Refresh data home
     await Promise.all([
       presence.fetchToday(),
       auth.fetchMe(),
@@ -194,9 +186,10 @@ async function submit() {
         class="relative w-72 h-72 rounded-full overflow-hidden bg-gray-800 flex-shrink-0 transition-all duration-500"
         :class="{
           'ring-4 ring-violet-500/40': step === 'loading-model',
-          'ring-4 ring-yellow-400/60': step === 'liveness',
-          'ring-4 ring-violet-500/60': step === 'camera',
-          'ring-4 ring-green-500/60':  step === 'preview' || step === 'success',
+          'ring-4 ring-violet-400/60': step === 'liveness',
+          'ring-4 ring-green-500/60':  step === 'camera',
+          'ring-4 ring-blue-500/60':   step === 'preview',
+          'ring-4 ring-green-500/80':  step === 'success',
           'ring-4 ring-red-500/60':    step === 'error',
           'ring-4 ring-blue-500/40':   step === 'processing',
         }"
@@ -227,19 +220,32 @@ async function submit() {
           <p class="text-white text-xs text-center px-6">Memuat AI Model...</p>
         </div>
 
-        <!-- Liveness overlay -->
+        <!-- Liveness scan overlay -->
         <div v-if="step === 'liveness'" class="absolute inset-0">
-          <div class="absolute inset-0 overflow-hidden rounded-full pointer-events-none">
-            <div class="w-full h-0.5 bg-yellow-400/50 animate-scan"></div>
+          <!-- Scan ring -->
+          <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div class="w-52 h-52 border-2 border-violet-400/50 rounded-full animate-ping-slow"></div>
           </div>
+          <!-- Corner scan lines -->
+          <div class="absolute top-8 left-8 w-8 h-8 border-t-2 border-l-2 border-violet-400 rounded-tl-lg"></div>
+          <div class="absolute top-8 right-8 w-8 h-8 border-t-2 border-r-2 border-violet-400 rounded-tr-lg"></div>
+          <div class="absolute bottom-8 left-8 w-8 h-8 border-b-2 border-l-2 border-violet-400 rounded-bl-lg"></div>
+          <div class="absolute bottom-8 right-8 w-8 h-8 border-b-2 border-r-2 border-violet-400 rounded-br-lg"></div>
+          <!-- Status badge -->
           <div class="absolute bottom-5 left-0 right-0 flex justify-center">
             <div class="bg-black/60 backdrop-blur-sm px-4 py-1.5 rounded-full flex items-center gap-2">
-              <div class="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
-              <p class="text-yellow-400 text-xs font-medium">
-                Kedipan: {{ liveness.blinkCount.value }}x
-              </p>
+              <div class="w-2 h-2 bg-violet-400 rounded-full animate-pulse"></div>
+              <p class="text-violet-300 text-xs font-medium">Mendeteksi wajah...</p>
             </div>
           </div>
+        </div>
+
+        <!-- Processing overlay -->
+        <div
+          v-if="step === 'processing'"
+          class="absolute inset-0 bg-gray-900/60 flex items-center justify-center"
+        >
+          <div class="w-10 h-10 border-2 border-violet-400 border-t-transparent rounded-full animate-spin"></div>
         </div>
 
         <!-- Error overlay -->
@@ -282,7 +288,7 @@ async function submit() {
       </div>
 
       <!-- Status Text -->
-      <div class="w-full max-w-xs text-center min-h-[80px] flex flex-col items-center justify-center">
+      <div class="w-full max-w-xs text-center min-h-[100px] flex flex-col items-center justify-center">
 
         <!-- Loading model -->
         <template v-if="step === 'loading-model'">
@@ -290,14 +296,21 @@ async function submit() {
           <p class="text-gray-500 text-xs mt-1">Harap tunggu sebentar...</p>
         </template>
 
-        <!-- Liveness -->
+        <!-- Liveness scan -->
         <template v-else-if="step === 'liveness'">
-          <p class="text-yellow-400 text-sm font-medium">Liveness Detection</p>
-          <p class="text-gray-300 text-sm mt-1">Kedipkan mata Anda minimal 1x</p>
-          <p class="text-gray-500 text-xs mt-1">dalam 6 detik</p>
-          <div class="mt-3 w-48 bg-gray-700 rounded-full h-1 overflow-hidden">
-            <div class="bg-yellow-400 h-1 rounded-full animate-progress"></div>
+          <p class="text-violet-400 text-sm font-medium">Scan Wajah</p>
+          <p class="text-gray-300 text-sm mt-1">Hadapkan wajah ke kamera</p>
+          <p class="text-gray-500 text-xs mt-1">Tahan selama 3 detik</p>
+          <!-- Progress bar -->
+          <div class="mt-3 w-48 bg-gray-700 rounded-full h-1.5 overflow-hidden">
+            <div
+              class="bg-violet-400 h-1.5 rounded-full transition-all duration-100"
+              :style="{ width: liveness.scanProgress.value + '%' }"
+            ></div>
           </div>
+          <p class="text-violet-400 text-xs mt-1.5 font-medium">
+            {{ Math.round(liveness.scanProgress.value) }}%
+          </p>
         </template>
 
         <!-- Camera ready -->
@@ -306,7 +319,7 @@ async function submit() {
             <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
             </svg>
-            <p class="text-green-400 text-sm font-medium">Liveness OK</p>
+            <p class="text-green-400 text-sm font-medium">Scan Berhasil</p>
           </div>
           <p class="text-gray-300 text-sm">Posisikan wajah & ambil foto</p>
           <p class="text-gray-500 text-xs mt-1">Pastikan pencahayaan cukup</p>
@@ -334,7 +347,9 @@ async function submit() {
 
         <!-- Error -->
         <template v-else-if="step === 'error'">
-          <p class="text-red-400 text-sm font-medium text-center px-2">{{ errorMsg }}</p>
+          <p class="text-red-400 text-sm font-medium text-center px-2 leading-relaxed">
+            {{ errorMsg }}
+          </p>
           <button
             @click="retake"
             class="mt-3 px-6 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-xl transition active:scale-95"
@@ -378,24 +393,17 @@ async function submit() {
         </div>
 
       </div>
-
     </div>
   </div>
 </template>
 
 <style scoped>
-@keyframes scan {
-  0%   { transform: translateY(-4px); }
-  100% { transform: translateY(292px); }
+@keyframes ping-slow {
+  0%   { transform: scale(0.95); opacity: 0.7; }
+  50%  { transform: scale(1.05); opacity: 0.4; }
+  100% { transform: scale(0.95); opacity: 0.7; }
 }
-@keyframes progress {
-  0%   { width: 0%; }
-  100% { width: 100%; }
-}
-.animate-scan {
-  animation: scan 2s linear infinite;
-}
-.animate-progress {
-  animation: progress 6s linear forwards;
+.animate-ping-slow {
+  animation: ping-slow 2s ease-in-out infinite;
 }
 </style>

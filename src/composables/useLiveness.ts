@@ -10,52 +10,37 @@ export function useLiveness() {
   const isChecking = ref(false)
   const result = ref<LivenessResult | null>(null)
   const blinkCount = ref(0)
-  const EAR_THRESHOLD = 0.22
-
-  function calculateEAR(eye: faceapi.Point[]): number {
-    // FIX: optional chaining pada semua akses index array
-    const p1 = eye[1]
-    const p2 = eye[2]
-    const p3 = eye[3]
-    const p4 = eye[4]
-    const p5 = eye[5]
-    const p0 = eye[0]
-
-    if (!p0 || !p1 || !p2 || !p3 || !p4 || !p5) return 1
-
-    const v1 = Math.hypot(p1.x - p5.x, p1.y - p5.y)
-    const v2 = Math.hypot(p2.x - p4.x, p2.y - p4.y)
-    const h  = Math.hypot(p0.x - p3.x, p0.y - p3.y)
-
-    if (h === 0) return 1
-
-    return (v1 + v2) / (2.0 * h)
-  }
+  const scanProgress = ref(0) // progress 0-100
 
   async function checkLiveness(
     videoEl: HTMLVideoElement,
-    durationMs = 6000
+    durationMs = 3000 // ← lebih cepat, 3 detik
   ): Promise<LivenessResult> {
     isChecking.value = true
     blinkCount.value = 0
+    scanProgress.value = 0
     result.value = null
 
-    let eyeWasClosed = false
     const startTime = Date.now()
+    let faceDetectedCount = 0
+    const requiredDetections = 5 // wajah harus terdeteksi minimal 5 frame
 
     return new Promise((resolve) => {
       const interval = setInterval(async () => {
+        const elapsed = Date.now() - startTime
+        scanProgress.value = Math.min(100, (elapsed / durationMs) * 100)
 
-        if (Date.now() - startTime > durationMs) {
+        // Timeout
+        if (elapsed > durationMs) {
           clearInterval(interval)
           isChecking.value = false
 
-          const passed = blinkCount.value >= 1
+          const passed = faceDetectedCount >= requiredDetections
           result.value = {
             passed,
             message: passed
-              ? 'Liveness terdeteksi!'
-              : 'Kedipan mata tidak terdeteksi. Coba lagi.',
+              ? 'Wajah terdeteksi!'
+              : 'Wajah tidak terdeteksi. Pastikan wajah terlihat jelas.',
           }
           resolve(result.value)
           return
@@ -63,27 +48,30 @@ export function useLiveness() {
 
         try {
           const detection = await faceapi
-            .detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions())
-            .withFaceLandmarks()
+            .detectSingleFace(
+              videoEl,
+              new faceapi.TinyFaceDetectorOptions({
+                inputSize: 160,
+                scoreThreshold: 0.3,
+              })
+            )
 
-          if (!detection) return
+          if (detection) {
+            faceDetectedCount++
+            console.log(`Wajah terdeteksi: ${faceDetectedCount}/${requiredDetections}`)
+          }
 
-          const landmarks = detection.landmarks
-          const leftEye  = landmarks.getLeftEye()
-          const rightEye = landmarks.getRightEye()
+          // Kalau sudah cukup deteksi sebelum timeout — langsung lulus
+          if (faceDetectedCount >= requiredDetections) {
+            clearInterval(interval)
+            isChecking.value = false
+            scanProgress.value = 100
 
-          // Pastikan array eye punya cukup point
-          if (leftEye.length < 6 || rightEye.length < 6) return
-
-          const leftEAR  = calculateEAR(leftEye)
-          const rightEAR = calculateEAR(rightEye)
-          const avgEAR   = (leftEAR + rightEAR) / 2
-
-          if (avgEAR < EAR_THRESHOLD) {
-            eyeWasClosed = true
-          } else if (eyeWasClosed) {
-            blinkCount.value++
-            eyeWasClosed = false
+            result.value = {
+              passed: true,
+              message: 'Wajah terdeteksi!',
+            }
+            resolve(result.value)
           }
 
         } catch {
@@ -93,5 +81,5 @@ export function useLiveness() {
     })
   }
 
-  return { isChecking, result, blinkCount, checkLiveness }
+  return { isChecking, result, blinkCount, scanProgress, checkLiveness }
 }
