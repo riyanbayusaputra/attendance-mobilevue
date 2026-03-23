@@ -33,4 +33,13 @@ export const presenceService = {
     const { data } = await api.post('/presences/check-out', payload)
     return data
   },
+  async monthlyReport(month: number, year: number): Promise<any> {
+  const { data } = await api.get(`/report/monthly?month=${month}&year=${year}`)
+  return data
+},
+
+async summary(): Promise<any> {
+  const { data } = await api.get('/report/summary')
+  return data
+},
 }
